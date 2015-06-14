@@ -16,6 +16,20 @@ class Motor():
                  pwmUp='hpg.pwmgen.00.out.01',
                  enableDown='bb_gpio.p9.out-15',
                  enableUp='bb_gpio.p9.out-17'):
+
+        sigPgain = hal.newsig('%s-pgain' % name, hal.HAL_FLOAT)
+        sigIgain = hal.newsig('%s-igain' % name, hal.HAL_FLOAT)
+        sigDgain = hal.newsig('%s-dgain' % name, hal.HAL_FLOAT)
+        sigCmdVel = hal.newsig('%s-cmd-vel' % name, hal.HAL_FLOAT)
+        sigPwmIn = hal.newsig('%s-pwm-in' % name, hal.HAL_FLOAT)
+        sigPos = hal.newsig('%s-pos' % name, hal.HAL_FLOAT)
+        sigVel = hal.newsig('%s-vel' % name, hal.HAL_FLOAT)
+        sigAcc = hal.newsig('%s-acc' % name, hal.HAL_FLOAT)
+        sigUp = hal.newsig('%s-pwm-up' % name, hal.HAL_FLOAT)
+        sigDown = hal.newsig('%s-pwm-down' % name, hal.HAL_FLOAT)
+        sigEnable = hal.newsig('%s-enable' % name, hal.HAL_BIT)
+        sigPwmEn = hal.newsig('%s-pwm-enable' % name, hal.HAL_BIT)
+
         # 43.7:1 gear
         # encoder resolution of 64 counts per revolution of the motor shaft,
         # 2797 counts per revolution of the gearboxs output shaft.
@@ -23,24 +37,12 @@ class Motor():
         # for eQEP0.position in shaft revs:
         hal.Pin('%s.position-scale' % eqep).set(eqepScale)
         # feed into PID
-        hal.net('%s-pos' % name, '%s.position' % eqep)
+        sigPos.link('%s.position' % eqep)
         # for UI feedback
-        hal.net('%s-vel' % name, '%s.velocity' % eqep)
-
-        sigPgain = hal.newsig('%s-pgain' % name, hal.HAL_FLOAT)
-        sigIgain = hal.newsig('%s-igain' % name, hal.HAL_FLOAT)
-        sigDgain = hal.newsig('%s-dgain' % name, hal.HAL_FLOAT)
-        sigCmdVel = hal.newsig('%s-cmd-vel' % name, hal.HAL_FLOAT)
-        sigOutVel = hal.newsig('%s-out-vel' % name, hal.HAL_FLOAT)
-        sigVel = hal.newsig('%s-vel' % name, hal.HAL_FLOAT)
-        sigAcc = hal.newsig('%s-acc' % name, hal.HAL_FLOAT)
-        sigUp = hal.newsig('%s-up' % name, hal.HAL_FLOAT)
-        sigDown = hal.newsig('%s-down' % name, hal.HAL_FLOAT)
-        sigEnable = hal.newsig('%s-enable' % name, hal.HAL_BIT)
-        sigPwmEn = hal.newsig('%s-pwm-enable' % name, hal.HAL_BIT)
+        sigVel.link('%s.velocity' % eqep)
 
         # ddt for accel
-        ddt = rt.newinst('i_ddt', 'ddt.%s-acc' % name)
+        ddt = rt.newinst('ddt', 'ddt.%s-acc' % name)
         hal.addf(ddt.name, thread)
         ddt.pin('in').link(sigVel)
         ddt.pin('out').link(sigAcc)
@@ -53,17 +55,18 @@ class Motor():
         pid.pin('Igain').link(sigIgain)
         pid.pin('Dgain').link(sigDgain)
         pid.pin('command').link(sigCmdVel)
-        pid.pin('output').link(sigOutVel)
+        pid.pin('output').link(sigPwmIn)
         pid.pin('feedback').link(sigVel)
         pid.pin('enable').link(sigEnable)
 
         # hbridge
-        hbridge = rt.newinst('i_hbridge', 'hbridge.%s' % name)
-        hal.addf(hbridge, thread)
+        hbridge = rt.newinst('hbridge', 'hbridge.%s' % name)
+        hal.addf(hbridge.name, thread)
         hbridge.pin('up').link(sigUp)
         hbridge.pin('down').link(sigDown)
         hbridge.pin('enable').link(sigEnable)
         hbridge.pin('enable-out').link(sigPwmEn)
+        hbridge.pin('command').link(sigPwmIn)
 
         # PWM signals
         hal.Pin('%s.value' % pwmUp).link(sigUp)
@@ -90,9 +93,9 @@ def setupPosPid(name='pos', pgain=0.001, igain=0.0, dgain=0.0,
     sigDgain = hal.newsig('%s-dgain' % name, hal.HAL_FLOAT)
     sigVel = hal.newsig('%s-vel' % name, hal.HAL_FLOAT)
     sigFeedback = hal.newsig('%s-feedback' % name, hal.HAL_FLOAT)
-    sigOutput = hal.newsig('%s-output' % name)
-    sigCmd = hal.newsig('%s-cmd' % name)
-    sigEnable = hal.newsig('%s-enable' % name)
+    sigOutput = hal.newsig('%s-output' % name, hal.HAL_FLOAT)
+    sigCmd = hal.newsig('%s-cmd' % name, hal.HAL_FLOAT)
+    sigEnable = hal.newsig('%s-enable' % name, hal.HAL_BIT)
 
     pid = rt.newinst('pid', 'pid.%s' % name)
     hal.addf('%s.do-pid-calcs' % pid.name, thread)
@@ -106,7 +109,7 @@ def setupPosPid(name='pos', pgain=0.001, igain=0.0, dgain=0.0,
     pid.pin('command').link(sigCmd)
     pid.pin('enable').link(sigEnable)
 
-    kalman = hal.instances['kalman']
+    kalman = hal.components['kalman']
     kalman.pin('rate').link(sigVel)
     kalman.pin('angle').link(sigFeedback)
 
@@ -138,7 +141,7 @@ def setupGyro(thread='base_thread'):
     gyroaccel.pin('rate').link(sigNewRate)
     gyroaccel.pin('invert').set(True)  # invert the output since we mounted the gyro upside down
 
-    kalman = rt.newinst('kalman', 'kalman.%s' % name)
+    kalman = rt.loadrt('kalman', 'names=kalman')
     hal.addf(kalman.name, thread)
     kalman.pin('req').link(sigReq)
     kalman.pin('ack').link(sigAck)
@@ -169,13 +172,13 @@ hal.addf('bb_gpio.read', baseThread)
 hal.addf('eqep.update', baseThread)
 
 ml = Motor(name='ml', eqep='eQEP0', eqepScale=2797.0,
-           pwmDown='hpg.pwmgen.00.out.00',
-           pwmUp='hpg.pwmgen.00.out.01',
+           pwmUp='hpg.pwmgen.00.out.00',
+           pwmDown='hpg.pwmgen.00.out.01',
            enableDown='bb_gpio.p9.out-15',
            enableUp='bb_gpio.p9.out-17')
-mr = Motor(name='mr', eqep='eQEP2', eqepScale=-2797.0,
-           pwmDown='hpg.pwmgen.00.out.02',
-           pwmUp='hpg.pwmgen.00.out.03',
+mr = Motor(name='mr', eqep='eQEP2', eqepScale=2797.0,
+           pwmUp='hpg.pwmgen.00.out.02',
+           pwmDown='hpg.pwmgen.00.out.03',
            enableDown='bb_gpio.p8.out-38',
            enableUp='bb_gpio.p8.out-40')
 
