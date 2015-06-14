@@ -35,7 +35,7 @@ try:
     launcher.check_installation()
     launcher.cleanup_session()
     launcher.load_bbio_file('halanduino.bbio')
-    launcher.install_comp('kalman.icomp')
+    launcher.install_comp('kalman.comp')
     launcher.install_comp('hbridge.icomp')
     if args.config:
         # the point-of-contact for QtQUickVCP
