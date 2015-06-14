@@ -1,0 +1,96 @@
+component kalman "A Kalman filter";
+pin in float new_angle;
+pin in float new_rate;
+pin in float dt;
+pin in bit ack;
+pin out bit req;
+pin out float angle;
+pin out float rate;
+pin in float qAngle = 0.001;
+pin in float qBias = 0.003;
+pin in float rMeasure = 0.03;
+function _ fp;
+description """
+A HAL implementation of:
+    KasBot V2  -  Kalman filter module - http://www.x-firm.com/?page_id=145
+    Modified by Kristian Lauszus
+    See the blog post for more information: http://blog.tkjelectronics.dk/2012/09/a-practical-approach-to-kalman-filter-and-how-to-implement-it
+
+The angle should be in degrees and the rate should be in degrees per second and the delta time in seconds
+""";
+license "GPL";
+author "Alexander Rössler";
+;;
+//hal_float_t angle; // The angle calculated by the Kalman filter - part of the 2x1 state vector
+hal_float_t bias; // The gyro bias calculated by the Kalman filter - part of the 2x1 state vector
+//hal_float_t rate; // Unbiased rate calculated from the rate and the calculated bias - you have to call getAngle to update the rate
+
+hal_float_t P[2][2]; // Error covariance matrix - This is a 2x2 matrix
+hal_float_t K[2]; // Kalman gain - This is a 2x1 vector
+hal_float_t y; // Angle difference
+hal_float_t S; // Estimate error
+
+EXTRA_SETUP()
+{
+    angle = 0.0; // Reset the angle
+    bias = 0.0;  // Reset bias
+    rate = 0.0;  // Reset rate
+
+    req = FALSE; // Disable req
+
+    P[0][0] = 0.0; // Since we assume that the bias is 0 and we know the starting angle (use setAngle), the error covariance matrix is set like so - see: http://en.wikipedia.org/wiki/Kalman_filter#Example_application.2C_technical
+    P[0][1] = 0.0;
+    P[1][0] = 0.0;
+    P[1][1] = 0.0;
+
+    return 0;
+}
+
+FUNCTION(_)
+{
+    if ((req == FALSE) && (ack == FALSE))
+    {
+        req = TRUE; // Req a new measurement
+    }
+    else if ((req == TRUE) && (ack == TRUE))    // Check wheter the measurement is finished
+    {
+        // Discrete Kalman filter time update equations - Time Update ("Predict")
+        // Update xhat - Project the state ahead
+        /* Step 1 */
+        rate = new_rate - bias;
+        angle += dt * rate;
+
+        // Update estimation error covariance - Project the error covariance ahead
+        /* Step 2 */
+        P[0][0] += dt * (dt*P[1][1] - P[0][1] - P[1][0] + qAngle);
+        P[0][1] -= dt * P[1][1];
+        P[1][0] -= dt * P[1][1];
+        P[1][1] += qBias * dt;
+
+        // Discrete Kalman filter measurement update equations - Measurement Update ("Correct")
+        // Calculate Kalman gain - Compute the Kalman gain
+        /* Step 4 */
+        S = P[0][0] + rMeasure;
+        /* Step 5 */
+        K[0] = P[0][0] / S;
+        K[1] = P[1][0] / S;
+
+        // Calculate angle and bias - Update estimate with measurement zk (new_angle)
+        /* Step 3 */
+        y = new_angle - angle;
+        /* Step 6 */
+        angle += K[0] * y;
+        bias += K[1] * y;
+
+        // Calculate estimation error covariance - Update the error covariance
+        /* Step 7 */
+        P[0][0] -= K[0] * P[0][0];
+        P[0][1] -= K[0] * P[0][1];
+        P[1][0] -= K[1] * P[0][0];
+        P[1][1] -= K[1] * P[0][1];
+
+        req = FALSE; // Reset the req
+    }
+
+    return 0;
+}

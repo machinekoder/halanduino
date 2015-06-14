@@ -1,0 +1,62 @@
+# File generated with BB pin configurator
+# title: BeagleBone Universal IO Configurator
+overlay cape-universal
+overlay cape-bone-iio
+overlay cape-univ-hdmi
+P8_7 default
+P8_8 low #MR_R_PWM
+P8_9 default
+P8_10 low #MR_L_PWM
+P8_11 qep #QEP2B
+P8_12 qep #QEP2A
+P8_13 low #LED_G
+P8_14 default
+P8_15 qep
+P8_16 qep
+P8_17 low #LED_R
+P8_18 default
+P8_19 low #LED_B
+P8_26 default
+P8_27 default
+P8_28 default
+P8_29 default
+P8_30 default
+P8_31 default
+P8_32 default
+P8_33 default
+P8_34 default
+P8_35 default
+P8_36 default
+P8_37 default
+P8_38 gpio_pd #MR_L_EN
+P8_39 default
+P8_40 gpio_pd #MR_R_EN
+P8_41 default
+P8_42 default
+P8_43 default
+P8_44 default
+P8_45 default
+P8_46 default
+P9_11 low #ML_R_PWM
+P9_12 default
+P9_13 low #ML_L_PWM
+P9_14 default
+P9_15 gpio_pd #ML_L_EN
+P9_16 default
+P9_17 gpio_pd #ML_R_EN
+P9_18 default
+P9_21 default
+P9_22 default
+P9_23 default
+P9_24 default
+P9_25 qep
+P9_26 default
+P9_27 qep #QEP0B
+P9_28 default
+P9_29 default
+P9_30 default
+P9_31 default
+P9_41 default
+P9_42 default
+P9_91 qep
+P9_92 qep #QEP0A

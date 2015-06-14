@@ -1,0 +1,93 @@
+#!/usr/bin/python
+# encoding: utf-8
+"""
+hal_gyroaccel.py
+
+Created by Alexander Rössler on 2014-02-26.
+"""
+from libraries.Gyrometer.L3GD20 import L3GD20
+from libraries.Accelerometer.Adafruit_LSM303DLHC import LSM303DLHC
+
+import argparse
+import time
+import math
+
+import hal
+
+parser = argparse.ArgumentParser(description='HAL component to read LSM303 Accelerometer values')
+parser.add_argument('-n', '--name', help='HAL component name', required=True)
+parser.add_argument('-b', '--bus_id', help='I2C bus id', default=1)
+parser.add_argument('-i', '--interval', help='I2C update interval', default=0.25)
+args = parser.parse_args()
+
+update_interval = float(args.interval)
+
+# Communication object
+gyro = L3GD20(busId=int(args.bus_id),
+              slaveAddr=0x6B,
+              ifLog=False,
+              ifWriteBlock=False)
+accel = LSM303DLHC(address_accel=0x19,
+                   address_mag=0x1E,
+                   debug=False,
+                   busId=int(args.bus_id))
+
+# Preconfiguration
+gyro.Set_PowerMode("Normal")
+gyro.Set_FullScale_Value("250dps")
+gyro.Set_AxisX_Enabled(True)
+gyro.Set_AxisY_Enabled(False)
+gyro.Set_AxisZ_Enabled(False)
+
+accel.setTempEnabled(True)
+accelXzero = 0.0
+accelZzero = 0.0
+
+# Print current configuration
+gyro.Init()
+gyro.CalibrateX()
+
+# Initialize HAL
+h = hal.component(args.name)
+anglePin = h.newpin('angle', hal.HAL_FLOAT, hal.HAL_OUT)
+ratePin = h.newpin('rate', hal.HAL_FLOAT, hal.HAL_OUT)
+dtPin = h.newpin('dt', hal.HAL_FLOAT, hal.HAL_OUT)
+reqPin = h.newpin('req', hal.HAL_BIT, hal.HAL_IN)
+ackPin = h.newpin('ack', hal.HAL_BIT, hal.HAL_OUT)
+invertPin = h.newpin('invert', hal.HAL_BIT, hal.HAL_IN)
+offsetPin = h.newpin('offset', hal.HAL_FLOAT, hal.HAL_IN)
+h.ready()
+
+anglePin.value = 0.0
+ratePin.value = 0.0
+dtPin.value = 0.0
+ackPin.value = 0
+
+oldTimestamp = time.time()
+
+try:
+    while(True):
+        if ((reqPin.value == 1) and (ackPin.value == 0)):
+            gyroRate = gyro.Get_CalOutX_Value()
+            accelXyz = accel.readAccelerationsG()
+            newTimestamp = time.time()  # NOTE: take timestamp before or after???
+
+            if invertPin.value == False:
+                accAngle = math.degrees(math.atan2(accelXyz.x - accelXzero,
+                                                    accelXyz.z - accelZzero))
+            else:
+                accAngle = math.degrees(math.atan2(-(accelXyz.x - accelXzero),
+                                                    -(accelXyz.z - accelZzero)))
+            accAngle += offsetPin.value
+            anglePin.value = accAngle
+            ratePin.value = gyroRate
+            dtPin.value = newTimestamp - oldTimestamp
+            oldTimestamp = newTimestamp
+            ackPin.value = 1
+        elif ((reqPin.value == 0) and (ackPin.value == 1)):
+            ackPin.value = 0
+
+        time.sleep(update_interval)
+except:
+    print(("exiting HAL component " + args.name))
+    h.exit()
