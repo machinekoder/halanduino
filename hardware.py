@@ -36,6 +36,8 @@ class Motor():
 
         # for eQEP0.position in shaft revs:
         hal.Pin('%s.position-scale' % eqep).set(eqepScale)
+        hal.Pin('%s.capture-prescaler' % eqep).set(5)
+        hal.Pin('%s.min-speed-estimate' % eqep).set(0.001)
         # feed into PID
         sigPos.link('%s.position' % eqep)
         # for UI feedback
@@ -48,7 +50,7 @@ class Motor():
         ddt.pin('out').link(sigAcc)
 
         # PID
-        pid = rt.newinst('pid', 'pid.%s-vel' % name)
+        pid = rt.newinst('at_pid', 'pid.%s-vel' % name)
         hal.addf('%s.do-pid-calcs' % pid.name, thread)
         pid.pin('maxoutput').set(1.0)  # set maxout to prevent windup effect
         pid.pin('Pgain').link(sigPgain)
@@ -58,6 +60,10 @@ class Motor():
         pid.pin('output').link(sigPwmIn)
         pid.pin('feedback').link(sigVel)
         pid.pin('enable').link(sigEnable)
+
+        # auto tuning
+        pid.pin('tuneCycles').set(200)
+        pid.pin('tuneEffort').set(0.1)
 
         # hbridge
         hbridge = rt.newinst('hbridge', 'hbridge.%s' % name)
