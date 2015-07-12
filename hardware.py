@@ -30,6 +30,9 @@ class Motor():
         sigEnable = hal.newsig('%s-enable' % name, hal.HAL_BIT)
         sigPwmEn = hal.newsig('%s-pwm-enable' % name, hal.HAL_BIT)
 
+        sigTuneStart = hal.newsig('%s-tune-start' % name, hal.HAL_BIT)
+        sigTuneMode = hal.newsig('%s-tune-mode' % name, hal.HAL_BIT)
+
         # 43.7:1 gear
         # encoder resolution of 64 counts per revolution of the motor shaft,
         # 2797 counts per revolution of the gearboxs output shaft.
@@ -38,6 +41,7 @@ class Motor():
         hal.Pin('%s.position-scale' % eqep).set(eqepScale)
         hal.Pin('%s.capture-prescaler' % eqep).set(5)
         hal.Pin('%s.min-speed-estimate' % eqep).set(0.001)
+
         # feed into PID
         sigPos.link('%s.position' % eqep)
         # for UI feedback
@@ -63,7 +67,31 @@ class Motor():
 
         # auto tuning
         pid.pin('tuneCycles').set(200)
-        pid.pin('tuneEffort').set(0.1)
+        pid.pin('tuneEffort').set(0.15)
+        pid.pin('tuneMode').link(sigTuneMode)
+        pid.pin('tuneStart').link(sigTuneStart)
+
+        # automatically start auto tuning when switched to tune mode
+        timedelay = rt.newinst('timedelay', 'timedelay.%s' % sigTuneStart.name)
+        hal.addf(timedelay.name, thread)
+        timedelay.pin('in').link(sigTuneMode)
+        timedelay.pin('on-delay').set(0.1)
+        timedelay.pin('off-delay').set(0.0)
+
+        # convert out singnal to IO
+        outToIo = rt.newinst('out_to_io', 'out-to-io.%s' % sigTuneStart.name)
+        hal.addf(outToIo.name, thread)
+        timedelay.pin('out').link(outToIo.pin('in-bit'))
+        outToIo.pin('out-bit').link(sigTuneStart)
+
+        # reset the tune mode to false once tuning is finished
+        reset = rt.newinst('reset', 'reset.%s' % sigTuneMode.name)
+        hal.addf(reset.name, thread)
+        reset.pin('out-bit').link(sigTuneMode)
+        reset.pin('reset-bit').set(False)
+        reset.pin('trigger').link(sigTuneStart)
+        reset.pin('rising').set(False)
+        reset.pin('falling').set(True)
 
         # hbridge
         hbridge = rt.newinst('hbridge', 'hbridge.%s' % name)
@@ -162,6 +190,10 @@ def setupStorage():
                 autosave=True, wait_name='storage')
 
 
+def readStorage():
+    hal.Pin('storage.read-trigger').set(True)  # trigger read
+
+
 rt.init_RTAPI()
 c.load_ini('hardware.ini')
 
@@ -186,9 +218,9 @@ rt.newthread(baseThread, 1000000, fp=True)
 hal.addf('bb_gpio.read', baseThread)
 hal.addf('eqep.update', baseThread)
 
-ml = Motor(name='ml', eqep='eQEP0', eqepScale=2797.0,
-           pwmUp='hpg.pwmgen.00.out.00',
-           pwmDown='hpg.pwmgen.00.out.01',
+ml = Motor(name='ml', eqep='eQEP0', eqepScale=-2797.0,
+           pwmUp='hpg.pwmgen.00.out.01',
+           pwmDown='hpg.pwmgen.00.out.00',
            enableDown='bb_gpio.p9.out-15',
            enableUp='bb_gpio.p9.out-17')
 mr = Motor(name='mr', eqep='eQEP2', eqepScale=2797.0,
@@ -199,6 +231,7 @@ mr = Motor(name='mr', eqep='eQEP2', eqepScale=2797.0,
 
 setupGyro()
 setupPosPid()
+readStorage()
 
 hal.addf('hpg.update', baseThread)
 hal.addf('bb_gpio.write', baseThread)
