@@ -131,7 +131,7 @@ def setupPosPid(name='pos', thread='base_thread'):
     sigCmd = hal.newsig('%s-cmd' % name, hal.HAL_FLOAT)
     sigEnable = hal.newsig('%s-enable' % name, hal.HAL_BIT)
 
-    pid = rt.newinst('pid', 'pid.%s' % name)
+    pid = rt.newinst('at_pid', 'pid.%s' % name)
     hal.addf('%s.do-pid-calcs' % pid.name, thread)
     pid.pin('maxoutput').set(1.0)  # set maxout to prevent windup effect
     pid.pin('Pgain').link(sigPgain)
@@ -147,8 +147,21 @@ def setupPosPid(name='pos', thread='base_thread'):
     kalman.pin('rate').link(sigVel)
     kalman.pin('angle').link(sigFeedback)
 
-    # TODO use output
+    # use a sum component to forward the output to the vel PIDs
+    sum2 = rt.newinst('sum2', 'sum2.mr')
+    hal.addf(sum2.name, thread)
+    sum2.pin('in0').link(sigOutput)
+    sum2.pin('in1').set(0)
+    sum2.pin('out').link('mr-cmd-vel')
+
+    sum2 = rt.newinst('sum2', 'sum2.ml')
+    hal.addf(sum2.name, thread)
+    sum2.pin('in0').link(sigOutput)
+    sum2.pin('in1').set(0)
+    sum2.pin('out').link('ml-cmd-vel')
+
     # TODO use cmd
+    sigCmd.set(0.0)
 
     # storage
     hal.Pin('storage.%s.pgain' % name).link(sigPgain)
