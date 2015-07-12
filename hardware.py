@@ -11,7 +11,7 @@ else:
 
 class Motor():
     def __init__(self, name='motor', thread='base_thread', eqep='eQEP0',
-                 eqepScale=2797.0, pgain=1.0, igain=0.0, dgain=0.01,
+                 eqepScale=2797.0,
                  pwmDown='hpg.pwmgen.00.out.00',
                  pwmUp='hpg.pwmgen.00.out.01',
                  enableDown='bb_gpio.p9.out-15',
@@ -84,16 +84,16 @@ class Motor():
         hal.Pin('%s.enable' % pwmUp).link(sigPwmEn)
         hal.Pin('%s.enable' % pwmDown).link(sigPwmEn)
 
-        sigPgain.set(pgain)
-        sigIgain.set(igain)
-        sigDgain.set(dgain)
-
         # prevent pid runup if disabled
         sigEnable.set(True)
 
+        # storage
+        hal.Pin('storage.%s.pgain' % name).link(sigPgain)
+        hal.Pin('storage.%s.igain' % name).link(sigIgain)
+        hal.Pin('storage.%s.dgain' % name).link(sigDgain)
 
-def setupPosPid(name='pos', pgain=0.001, igain=0.0, dgain=0.0,
-                thread='base_thread'):
+
+def setupPosPid(name='pos', thread='base_thread'):
     sigPgain = hal.newsig('%s-pgain' % name, hal.HAL_FLOAT)
     sigIgain = hal.newsig('%s-igain' % name, hal.HAL_FLOAT)
     sigDgain = hal.newsig('%s-dgain' % name, hal.HAL_FLOAT)
@@ -122,9 +122,10 @@ def setupPosPid(name='pos', pgain=0.001, igain=0.0, dgain=0.0,
     # TODO use output
     # TODO use cmd
 
-    sigPgain.set(pgain)
-    sigIgain.set(igain)
-    sigDgain.set(dgain)
+    # storage
+    hal.Pin('storage.%s.pgain' % name).link(sigPgain)
+    hal.Pin('storage.%s.igain' % name).link(sigIgain)
+    hal.Pin('storage.%s.dgain' % name).link(sigDgain)
 
     sigEnable.set(True)
 
@@ -156,12 +157,20 @@ def setupGyro(thread='base_thread'):
     kalman.pin('new-rate').link(sigNewRate)
 
 
+def setupStorage():
+    hal.loadusr('hal_storage', name='storage', file='storage.ini',
+                autosave=True, wait_name='storage')
+
+
 rt.init_RTAPI()
 c.load_ini('hardware.ini')
 
 rt.loadrt('hal_bb_gpio', output_pins='915,917,838,840')
 rt.loadrt('hal_arm335xQEP', encoders='eQEP0,eQEP2')
 rt.loadrt(c.find('PRUCONF', 'DRIVER'), 'prucode=' + c.find('PRUCONF', 'PRUBIN'), pru=0, num_pwmgens=7, halname='hpg')
+
+# storage
+setupStorage()
 
 # pru pwmgens
 hal.Pin('hpg.pwmgen.00.pwm_period').set(500000)
